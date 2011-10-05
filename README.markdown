@@ -46,6 +46,7 @@ Usage
 
 Suppose you have a codebase laid out like this:
 
+<pre>
 codebase/
   webapp/
     views/
@@ -63,6 +64,7 @@ codebase/
   third_party/
     lxml/
     mechanize/
+</pre>
 
 There are a few distinct applications here, the webapp, and some backend programs.
 Each application imports things from db_models, util, and third_party.
