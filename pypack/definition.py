@@ -2,6 +2,8 @@ import os
 import ConfigParser
 import subprocess
 
+_DEFINITION_CACHE = {}
+
 class MissingBuildDefinition(Exception):
     pass
 
@@ -44,12 +46,16 @@ class PypackDefinition(object):
         definition.init_definition_fs_paths(project_dir)
         pypack_file_path = os.path.join(definition.project_absolute_path,
                                         "PYPACK")
+        if _DEFINITION_CACHE.get(pypack_file_path, None):
+            return _DEFINITION_CACHE.get(pypack_file_path)
+
         try:
             definition.init_config(pypack_file_path)
         except MissingBuildDefinition:
             # Assume a module with no depends
             pass
 
+        _DEFINITION_CACHE[pypack_file_path] = definition
         return definition
 
 
@@ -96,6 +102,7 @@ class PypackDefinition(object):
         for depend_rel_path in depends_rel_paths:
             abs_path = os.path.join(self.repository_root,
                                     depend_rel_path)
+
             definition = PypackDefinition.from_project_directory(abs_path)
             dependency_defs.append(definition)
 
@@ -114,13 +121,16 @@ class PypackDefinition(object):
 
         return tree_parents
 
-    @property
-    def all_dependent_modules(self):
+    def all_dependent_modules(self, processed_defs=set([])):
         # TODO: cycle detection
         # Presently that's an infinite loop, so don't do that.
         dependent_modules = set(self.module_tree_parents)
         for dependency_def in self.direct_dependency_definitions:
-            dependent_modules.update(dependency_def.all_dependent_modules)
+            if dependency_def in processed_defs:
+                continue
+            processed_defs.add(dependency_def)
+            dependent_modules.update(
+                dependency_def.all_dependent_modules(processed_defs))
         return dependent_modules
 
 

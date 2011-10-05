@@ -34,7 +34,7 @@ def render_wrapped_binary(zip_file_basename, entry_module):
 
 def write_setup_py(definition):
     setup_py = render_setup_py(definition.project_name,
-                               "1.0", definition.all_dependent_modules)
+                               "1.0", definition.all_dependent_modules())
 
     setup_py_path = os.path.join(definition.repository_root, "setup.py")
     f = open(setup_py_path, "wb")
@@ -57,7 +57,12 @@ def zip_build_dir(definition):
     zip_basename = "%s.zip" % definition.project_name
     zip_path = os.path.join(definition.repository_root,
                             zip_basename)
-    zip_build(build_dir, zip_path)
+
+    zip_file = zipfile.ZipFile(zip_path, "w",
+                               compression=zipfile.ZIP_DEFLATED)
+    zip_dir(zip_file, build_dir, build_dir)
+    zip_file.close()
+
     return zip_basename
 
 
@@ -79,14 +84,6 @@ def build_project(definition):
     # Cleanup
     shutil.rmtree(build_dir)
     os.remove(setup_py_path)
-
-
-def zip_build(build_path, zip_file_path):
-    zip_file = zipfile.ZipFile(zip_file_path, "w",
-                               compression=zipfile.ZIP_DEFLATED)
-    zip_dir(zip_file, build_path, build_path)
-    zip_file.close()
-
 
 
 def zip_dir(zip_file, directory, build_root):

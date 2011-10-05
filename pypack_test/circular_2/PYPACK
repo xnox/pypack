@@ -1,0 +1,8 @@
+[project]
+name = c2
+
+[depends]
+pypack_test/circular_1
+
+[binaries]
+c2 = c2.py
