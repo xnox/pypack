@@ -6,6 +6,7 @@ the shell.
 import os
 import subprocess
 import zipfile
+import shutil
 
 
 def render_setup_py(name, version, packages):
@@ -31,24 +32,7 @@ def render_wrapped_binary(zip_file_basename, entry_module):
                        "entry_module": entry_module}
 
 
-def get_entry_module(binary_name, pypack_definition):
-    project_relative_path = os.path.relpath(pypack_definition.project_abs_dir,
-                                            pypack_definition.repository_root)
-    module_path = project_relative_path.replace(os.path.sep, ".")
-    binary_file = pypack_definition.get("binaries", binary_name)
-    if binary_file.endswith(".py"):
-        binary_file = binary_file[:-3]
-
-    entry_module = "%s.%s" % (module_path, binary_file)
-    return entry_module
-
-
-def write_init_py(build_dir):
-    f = open(os.path.join(build_dir, "__init__.py"), "wb")
-    f.close()
-
-
-def build_project(definition):
+def write_setup_py(definition):
     setup_py = render_setup_py(definition.project_name,
                                "1.0", definition.all_dependent_modules)
 
@@ -57,23 +41,44 @@ def build_project(definition):
     f.write(setup_py)
     f.close()
 
-    subprocess.check_call(["python", "setup.py",
-                           "build", "--build-lib=build/lib"],
-                          cwd=definition.repository_root)
-    write_init_py(os.path.join(definition.repository_root, "build", "lib"))
+    return setup_py_path
 
+def write_wrapped_binary(zip_basename, binary):
+    wrapped_binary = render_wrapped_binary(zip_basename,
+                                           binary.entry_module_path)
+    f = open(binary.output_path, "wb")
+    f.write(wrapped_binary)
+    f.close()
+    os.chmod(binary.output_path, 0755)
+
+
+def zip_build_dir(definition):
+    build_dir = os.path.join(definition.repository_root, "build")
     zip_basename = "%s.zip" % definition.project_name
     zip_path = os.path.join(definition.repository_root,
                             zip_basename)
-    zip_build(os.path.join(definition.repository_root, "build"), zip_path)
+    zip_build(build_dir, zip_path)
+    return zip_basename
+
+
+
+def build_project(definition):
+    setup_py_path = write_setup_py(definition)
+
+    build_dir = os.path.join(definition.repository_root, "build")
+    subprocess.check_call(["python", setup_py_path,
+                           "build", "--build-lib=%s" % build_dir],
+                          cwd=definition.repository_root)
+
+    zip_basename = zip_build_dir(definition)
 
     for binary in definition.binaries:
-        wrapped_binary = render_wrapped_binary(zip_basename,
-                                               binary.entry_module_path)
-        f = open(binary.output_path, "wb")
-        f.write(wrapped_binary)
-        f.close()
-        os.chmod(binary.output_path, 0755)
+        write_wrapped_binary(zip_basename, binary)
+
+
+    # Cleanup
+    shutil.rmtree(build_dir)
+    os.remove(setup_py_path)
 
 
 def zip_build(build_path, zip_file_path):
