@@ -1,0 +1,11 @@
+[project]
+name = crawler
+owner = Ted Dziuba <ted@milo.com>
+
+
+[binaries]
+crawler = crawler.py
+
+[depends]
+test/util/content_processor
+test/util/url_fetcher
