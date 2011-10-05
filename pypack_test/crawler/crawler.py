@@ -1,6 +1,6 @@
 import sys
-from util.content_processor import processor
-from util.url_fetcher import fetcher
+from pypack_test.util.content_processor import processor
+from pypack_test.util.url_fetcher import fetcher
 
 def crawl_page_title(url):
     content = fetcher.fetch_url(url)

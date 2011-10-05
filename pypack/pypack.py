@@ -1,9 +1,7 @@
 import os
 import argparse
 
-from dependencies import read_dependency_tree
-from dependencies import parse_pypack_definition
-from dependencies import determine_repository_root
+from definition import PypackDefinition
 from build import build_project
 
 
@@ -17,19 +15,10 @@ def parse_args():
     return args
 
 
-def get_target_definition(project):
-    project_abs_dir = os.path.abspath(project)
-    definition = parse_pypack_definition(project_abs_dir)
-    definition.repository_root = determine_repository_root(project_abs_dir)
-    return definition
-
-
 def main():
     args = parse_args()
-    definition = get_target_definition(args.project)
-    depends = read_dependency_tree(definition)
-
-    build_project(definition, depends)
+    definition = PypackDefinition.from_project_directory(args.project)
+    build_project(definition)
 
 if __name__ == "__main__":
     main()

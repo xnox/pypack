@@ -7,5 +7,6 @@ owner = Ted Dziuba <ted@milo.com>
 crawler = crawler.py
 
 [depends]
-test/util/content_processor
-test/util/url_fetcher
+pypack_test/util/content_processor
+pypack_test/util/url_fetcher
+pypack_test/

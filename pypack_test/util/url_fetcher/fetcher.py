@@ -1,7 +1,7 @@
 import sys
 import urllib2
 
-from util.net.url_io import get_handle
+from pypack_test.util.net.url_io import get_handle
 
 def fetch_url(url):
     return get_handle(url).read()

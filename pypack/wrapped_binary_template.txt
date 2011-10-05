@@ -1,0 +1,10 @@
+#!/bin/bash
+
+MY_DIR="$(cd "$(dirname $0)" && pwd)"
+
+PYPACK_ZIP=$MY_DIR/%(zip_file)s
+
+export PYTHONPATH=$PYPACK_ZIP/lib
+
+/usr/bin/env python -m %(entry_module)s $*
+
