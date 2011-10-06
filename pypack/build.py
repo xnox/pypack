@@ -5,7 +5,6 @@ the shell.
 """
 import os
 import subprocess
-import zipfile
 import shutil
 
 
@@ -52,19 +51,35 @@ def write_wrapped_binary(zip_basename, binary):
     os.chmod(binary.output_path, 0755)
 
 
+
 def zip_build_dir(definition):
     build_dir = os.path.join(definition.repository_root, "build")
-    zip_basename = "%s.zip" % definition.project_name
-    zip_path = os.path.join(definition.repository_root,
-                            zip_basename)
+    shutil.make_archive(base_name=definition.project_name,
+                        format="zip",
+                        root_dir=build_dir)
 
-    zip_file = zipfile.ZipFile(zip_path, "w",
-                               compression=zipfile.ZIP_DEFLATED)
-    zip_dir(zip_file, build_dir, build_dir)
-    zip_file.close()
+    return "%s.zip" % definition.project_name
 
-    return zip_basename
 
+def make_data_dir(definition):
+    data_rel_paths = definition.all_dependent_data_paths()
+    if not data_rel_paths:
+        return
+    data_dir = os.path.join(definition.repository_root,
+                            "%s_data" % definition.project_name)
+    if not os.path.exists(data_dir):
+        os.mkdir(data_dir)
+
+    return data_dir
+
+def copy_data_entries(definition, data_dir):
+    for repo_rel_path in definition.all_dependent_data_paths():
+        destination_abs_path = os.path.join(definition.repository_root,
+                                            data_dir,
+                                            repo_rel_path)
+        source_abs_path = os.path.join(definition.repository_root,
+                                       repo_rel_path)
+        shutil.copytree(source_abs_path, destination_abs_path)
 
 
 def build_project(definition):
@@ -80,19 +95,11 @@ def build_project(definition):
     for binary in definition.binaries:
         write_wrapped_binary(zip_basename, binary)
 
+    data_dir = make_data_dir(definition)
+    copy_data_entries(definition, data_dir)
+
 
     # Cleanup
     shutil.rmtree(build_dir)
     os.remove(setup_py_path)
-
-
-def zip_dir(zip_file, directory, build_root):
-    for f in os.listdir(directory):
-        f = os.path.join(directory, f)
-        if os.path.isfile(f):
-            zip_path = os.path.relpath(f, build_root)
-            zip_file.write(f, zip_path, zipfile.ZIP_DEFLATED)
-        elif os.path.isdir(f):
-            zip_dir(zip_file, f, build_root)
-
 

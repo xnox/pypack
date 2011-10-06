@@ -36,6 +36,7 @@ class PypackDefinition(object):
         self.project_absolute_path = None
         self.project_repo_rel_path = None
         self.module_path = None
+        self._dependent_definitions = None # The dependency tree
 
         self._config = ConfigParser.SafeConfigParser(allow_no_value=True)
 
@@ -90,14 +91,46 @@ class PypackDefinition(object):
 
 
     @property
+    def data_paths(self):
+        # The paths to files and directories
+        # in the [data] section of the PYPACK file.
+        # Paths are returned relative to the repo root
+        if not self._config or not self._config.has_section("data"):
+            return []
+
+        data_repo_rel_paths = []
+        data_rel_paths = [k for k, _ in self._config.items("data")]
+        for rel_path in data_rel_paths:
+            abs_path = os.path.join(self.project_absolute_path, rel_path)
+            repo_root_rel = os.path.relpath(abs_path, self.repository_root)
+            data_repo_rel_paths.append(repo_root_rel)
+
+        return data_repo_rel_paths
+
+
+    @property
     def direct_dependency_definitions(self):
         """PypackDefinition objects for this one's dependencies,
         as defined in the [depends] block in the PYPACK file.
+
+        Further, a package depends on its sub-packages, so add
+        entries for all directories in this subtree.
         """
         dependency_defs = []
-        if not self._config.has_section("depends"):
-            return []
 
+        # Packages in this sub-tree
+        for file_name in os.listdir(self.project_absolute_path):
+            abs_path = os.path.join(self.project_absolute_path, file_name)
+            if not os.path.isdir(abs_path):
+                continue
+            definition = PypackDefinition.from_project_directory(abs_path)
+            dependency_defs.append(definition)
+
+
+        if not self._config.has_section("depends"):
+            return dependency_defs
+
+        # Explicitly stated dependencies
         depends_rel_paths = [k for k, _ in self._config.items("depends")]
         for depend_rel_path in depends_rel_paths:
             abs_path = os.path.join(self.repository_root,
@@ -105,6 +138,7 @@ class PypackDefinition(object):
 
             definition = PypackDefinition.from_project_directory(abs_path)
             dependency_defs.append(definition)
+
 
         return dependency_defs
 
@@ -121,17 +155,39 @@ class PypackDefinition(object):
 
         return tree_parents
 
-    def all_dependent_modules(self, processed_defs=set([])):
-        # TODO: cycle detection
-        # Presently that's an infinite loop, so don't do that.
+
+    def all_dependent_modules(self):
         dependent_modules = set(self.module_tree_parents)
+        dependent_defs = self.all_dependent_definitions()
+        for def_ in dependent_defs:
+            dependent_modules.update(def_.module_tree_parents)
+        return dependent_modules
+
+
+    def all_dependent_data_paths(self):
+        dependent_data_paths = set(self.data_paths)
+        dependent_defs = self.all_dependent_definitions()
+        for def_ in dependent_defs:
+            dependent_data_paths.update(def_.data_paths)
+        return dependent_data_paths
+
+
+    def all_dependent_definitions(self, processed_defs=set([])):
+        if self._dependent_definitions is not None:
+            return self._dependent_definitions
+
+        dependent_defs = set([])
         for dependency_def in self.direct_dependency_definitions:
             if dependency_def in processed_defs:
                 continue
             processed_defs.add(dependency_def)
-            dependent_modules.update(
-                dependency_def.all_dependent_modules(processed_defs))
-        return dependent_modules
+            dependent_defs.add(dependency_def)
+            dependent_defs.update(
+                dependency_def.all_dependent_definitions(processed_defs))
+
+        self._dependent_definitions = dependent_defs
+        return self._dependent_definitions
+
 
 
     @property
