@@ -92,3 +92,9 @@ python pypack.py webapp/
 
 Pypack will output two files, an executable ```webapp```, and its self-contained
 dependencies, ```webapp.zip```.
+
+
+License
+-------
+
+Pypack is released under the Apache License, Version 2.0
