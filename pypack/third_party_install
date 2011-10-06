@@ -1,0 +1,21 @@
+#!/bin/bash
+
+die () {
+    echo >&2 "$@"
+    exit 1
+}
+
+[ "$#" -eq 2 ] || die "Usage: third_party_install <install_to> <package>"
+
+DOWNLOAD_TO=/tmp/third-party-install
+INSTALL_TO=`cd $1 && pwd`
+
+if [ ! -e "$DOWNLOAD_TO" ]
+then
+  mkdir $DOWNLOAD_TO
+fi
+
+pkg_name=`pip install --ignore-installed --no-install -b $DOWNLOAD_TO $2 | grep Successfully | cut -d " " -f 3`
+
+cd $DOWNLOAD_TO/$pkg_name
+python setup.py build --build-base $INSTALL_TO --build-platlib $INSTALL_TO --build-purelib $INSTALL_TO --build-lib=$INSTALL_TO --build-temp /tmp --build-scripts=$INSTALL_TO/bin
