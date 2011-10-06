@@ -199,7 +199,7 @@ class PypackDefinition(object):
 
     @property
     def binaries(self):
-        if not self._config:
+        if not self._config or not self._config.has_section("binaries"):
             return []
         binaries = []
         for binary_name, entry_point in self._config.items("binaries"):

@@ -67,8 +67,10 @@ def make_data_dir(definition):
         return
     data_dir = os.path.join(definition.repository_root,
                             "%s_data" % definition.project_name)
-    if not os.path.exists(data_dir):
-        os.mkdir(data_dir)
+    if os.path.exists(data_dir):
+        shutil.rmtree(data_dir)
+
+    os.mkdir(data_dir)
 
     return data_dir
 
