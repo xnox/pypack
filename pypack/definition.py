@@ -2,6 +2,8 @@ import os
 import ConfigParser
 import subprocess
 
+from util import cached_property
+
 _DEFINITION_CACHE = {}
 
 class MissingBuildDefinition(Exception):
@@ -13,20 +15,20 @@ class BinaryDefinition(object):
         self.binary_name = binary_name
         self.invocation_file = invocation_file
 
-    @property
+    @cached_property
     def output_path(self):
         return os.path.join(self.pypack_definition.repository_root,
                             self.binary_name)
 
-    @property
+    @cached_property
     def entry_module_path(self):
         # TODO: check to see if the invocation file is there
         local_module_name = self.invocation_file
         if self.invocation_file.endswith(".py"):
             local_module_name = local_module_name[:-3]
-        module_path = self.pypack_definition.project_repo_rel_path.replace(
-            os.path.sep, ".")
-        qualified_module_path = "%s.%s" % (module_path, local_module_name)
+
+        qualified_module_path = "%s.%s" % (
+            self.pypack_definition.module_py_path, local_module_name)
         return qualified_module_path
 
 
@@ -35,10 +37,10 @@ class PypackDefinition(object):
         self.repository_root = None
         self.project_absolute_path = None
         self.project_repo_rel_path = None
-        self.module_path = None
-        self._dependent_definitions = None # The dependency tree
-
+        self.module_py_path = None # A.B.C.D, not an FS path
         self._config = ConfigParser.SafeConfigParser(allow_no_value=True)
+
+        self._dependent_definitions = None # The dependency tree
 
 
     @classmethod
@@ -80,6 +82,11 @@ class PypackDefinition(object):
         self.project_repo_rel_path = os.path.relpath(self.project_absolute_path,
                                                      self.repository_root)
 
+        # While we're here, init the module "python" path, as if
+        # it were an import
+        self.module_py_path = self.project_repo_rel_path.replace(
+            os.path.sep, ".")
+
 
     def _determine_repo_root(self, project_directory):
         # Only supports git right now
@@ -90,25 +97,68 @@ class PypackDefinition(object):
         return git_dir.strip()
 
 
-    @property
-    def data_paths(self):
-        # The paths to files and directories
-        # in the [data] section of the PYPACK file.
-        # Paths are returned relative to the repo root
-        if not self._config or not self._config.has_section("data"):
+    @cached_property
+    def external_data_paths(self):
+        """
+        Return the paths to the files and directories in the
+        [external_data] section of the PYPACK file.
+        Paths are returned relative to the repo root.
+        """
+        return self._data_paths("external_data")
+
+
+    @cached_property
+    def internal_data_paths(self):
+        """
+        Return the paths to the files and directories in the
+        [internal_data] section of the PYPACK file.
+        Paths are returned relative to the repo root
+        """
+        return self._data_paths("internal_data",
+                                relative_to=self.project_absolute_path)
+
+
+    def _data_paths(self, config_section, relative_to=None):
+        """
+        Read and expand the data paths. For example, if someone
+        specifies:
+
+        templates/
+
+        this method will recursively expand that to all files
+        in the subtree.
+
+        When you want to support glob syntax, do it here.
+        """
+        if not self._config or not self._config.has_section(config_section):
             return []
 
-        data_repo_rel_paths = []
-        data_rel_paths = [k for k, _ in self._config.items("data")]
-        for rel_path in data_rel_paths:
+        if relative_to is None:
+            relative_to = self.repository_root
+
+        def visit(append_to, dirname, file_names):
+            for file_name in file_names:
+                path = os.path.join(dirname, file_name)
+                if os.path.isfile(path):
+                    append_to.append(path)
+
+
+        # Given the defined paths (relative to the project root),
+        # expand the entries to absolute paths
+        all_abs_paths = []
+        project_rel_paths = [k for k, _ in self._config.items(config_section)]
+        for rel_path in project_rel_paths:
             abs_path = os.path.join(self.project_absolute_path, rel_path)
-            repo_root_rel = os.path.relpath(abs_path, self.repository_root)
-            data_repo_rel_paths.append(repo_root_rel)
+            if not os.path.isdir(abs_path):
+                all_abs_paths.append(abs_path)
+            else:
+                # Recurse directories
+                os.path.walk(abs_path, visit, all_abs_paths)
 
-        return data_repo_rel_paths
+        # Return the paths relative to the method arg
+        return [os.path.relpath(a, relative_to) for a in all_abs_paths]
 
-
-    @property
+    @cached_property
     def direct_dependency_definitions(self):
         """PypackDefinition objects for this one's dependencies,
         as defined in the [depends] block in the PYPACK file.
@@ -143,7 +193,7 @@ class PypackDefinition(object):
         return dependency_defs
 
 
-    @property
+    @cached_property
     def module_tree_parents(self):
         """If the module is at A.B.C.D, this returns A, A.B, A.B.C, A.B.C.D"""
         tree_parents = []
@@ -156,23 +206,38 @@ class PypackDefinition(object):
         return tree_parents
 
 
-    def all_dependent_modules(self):
-        dependent_modules = set(self.module_tree_parents)
+
+    @cached_property
+    def all_dependencies(self):
+        """
+        Return the following dependencies, as a dictionary:
+          - Modules
+          - External data
+          - Internal (package) data
+        """
+
+        dependencies = {"modules": set(self.module_tree_parents),
+                        "external_data_paths": set(self.external_data_paths),
+                        "internal_data_paths":
+                            {self.module_py_path: self.internal_data_paths}}
         dependent_defs = self.all_dependent_definitions()
         for def_ in dependent_defs:
-            dependent_modules.update(def_.module_tree_parents)
-        return dependent_modules
+            dependencies["modules"].update(def_.module_tree_parents)
+            dependencies["external_data_paths"].update(def_.external_data_paths)
+            if def_.internal_data_paths:
+                # distutils requires a map of module -> relative path
+                # That's relative patch from the *package*, not the root
+                dependencies["internal_data_paths"][def_.module_py_path] = \
+                    def_.internal_data_paths
 
-
-    def all_dependent_data_paths(self):
-        dependent_data_paths = set(self.data_paths)
-        dependent_defs = self.all_dependent_definitions()
-        for def_ in dependent_defs:
-            dependent_data_paths.update(def_.data_paths)
-        return dependent_data_paths
+        return dependencies
 
 
     def all_dependent_definitions(self, processed_defs=set([])):
+        """
+        Return the transitive closure of dependency PypackDefinition
+        objects.
+        """
         if self._dependent_definitions is not None:
             return self._dependent_definitions
 
@@ -189,15 +254,14 @@ class PypackDefinition(object):
         return self._dependent_definitions
 
 
-
-    @property
+    @cached_property
     def project_name(self):
         if not self._config:
             return None
         return self._config.get("project", "name")
 
 
-    @property
+    @cached_property
     def binaries(self):
         if not self._config or not self._config.has_section("binaries"):
             return []

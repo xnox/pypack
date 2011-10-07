@@ -8,7 +8,7 @@ import subprocess
 import shutil
 
 
-def render_setup_py(name, version, packages):
+def render_setup_py(name, version, packages, package_data):
     this_dir = os.path.dirname(__file__)
     f = open(os.path.join(this_dir,"setup_py_template.txt"), "rb")
     template = f.read()
@@ -16,7 +16,8 @@ def render_setup_py(name, version, packages):
 
     setup_py = template % {"name": name,
                            "version": version,
-                           "packages": packages}
+                           "packages": packages,
+                           "package_data": package_data}
 
     return setup_py
 
@@ -32,8 +33,11 @@ def render_wrapped_binary(zip_file_basename, entry_module):
 
 
 def write_setup_py(definition):
+    dependent_modules = definition.all_dependencies["modules"]
+    package_data = definition.all_dependencies["internal_data_paths"]
     setup_py = render_setup_py(definition.project_name,
-                               "1.0", definition.all_dependent_modules())
+                               "1.0", dependent_modules,
+                               package_data)
 
     setup_py_path = os.path.join(definition.repository_root, "setup.py")
     f = open(setup_py_path, "wb")
@@ -41,6 +45,7 @@ def write_setup_py(definition):
     f.close()
 
     return setup_py_path
+
 
 def write_wrapped_binary(zip_basename, binary):
     wrapped_binary = render_wrapped_binary(zip_basename,
@@ -61,8 +66,8 @@ def zip_build_dir(definition):
     return "%s.zip" % definition.project_name
 
 
-def make_data_dir(definition):
-    data_rel_paths = definition.all_dependent_data_paths()
+def make_external_data_dir(definition):
+    data_rel_paths = definition.all_dependencies["external_data_paths"]
     if not data_rel_paths:
         return
     data_dir = os.path.join(definition.repository_root,
@@ -75,13 +80,23 @@ def make_data_dir(definition):
     return data_dir
 
 def copy_data_entries(definition, data_dir):
-    for repo_rel_path in definition.all_dependent_data_paths():
+    """
+    Copy both the external data definitions.
+    "external data" gets written to a projectname_data directory,
+    outside of the zipped package of dependencies.
+    """
+    for repo_rel_path in definition.all_dependencies["external_data_paths"]:
         destination_abs_path = os.path.join(definition.repository_root,
                                             data_dir,
                                             repo_rel_path)
         source_abs_path = os.path.join(definition.repository_root,
                                        repo_rel_path)
-        shutil.copytree(source_abs_path, destination_abs_path)
+        destination_dir = os.path.dirname(destination_abs_path)
+        if not os.path.exists(destination_dir):
+            os.makedirs(destination_dir)
+
+        # Copies file + metadata
+        shutil.copy2(source_abs_path, destination_abs_path)
 
 
 def build_project(definition):
@@ -97,7 +112,7 @@ def build_project(definition):
     for binary in definition.binaries:
         write_wrapped_binary(zip_basename, binary)
 
-    data_dir = make_data_dir(definition)
+    data_dir = make_external_data_dir(definition)
     copy_data_entries(definition, data_dir)
 
 

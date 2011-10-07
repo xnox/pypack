@@ -2,5 +2,6 @@ from distutils.core import setup
 
 setup(name="%(name)s",
       version="%(version)s",
-      packages=%(packages)s)
+      packages=%(packages)s,
+      package_data=%(package_data)s)
 
