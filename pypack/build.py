@@ -6,6 +6,10 @@ the shell.
 import os
 import subprocess
 import shutil
+import logging
+from StringIO import StringIO
+
+LOG = logging.getLogger(__name__)
 
 
 def render_setup_py(name, version, packages, package_data):
@@ -43,6 +47,7 @@ def write_setup_py(definition):
     f = open(setup_py_path, "wb")
     f.write(setup_py)
     f.close()
+    LOG.info("Wrote setup.py to %s", setup_py_path)
 
     return setup_py_path
 
@@ -54,6 +59,8 @@ def write_wrapped_binary(zip_basename, binary):
     f.write(wrapped_binary)
     f.close()
     os.chmod(binary.output_path, 0755)
+    LOG.info("Wrote binary '%s' to %s",
+             binary.binary_name, binary.output_path)
 
 
 
@@ -73,9 +80,11 @@ def make_external_data_dir(definition):
     data_dir = os.path.join(definition.repository_root,
                             "%s_data" % definition.project_name)
     if os.path.exists(data_dir):
+        LOG.info("External data dir %s exists, removing", data_dir)
         shutil.rmtree(data_dir)
 
     os.mkdir(data_dir)
+    LOG.info("Made external data dir %s", data_dir)
 
     return data_dir
 
@@ -97,16 +106,29 @@ def copy_data_entries(definition, data_dir):
 
         # Copies file + metadata
         shutil.copy2(source_abs_path, destination_abs_path)
+        LOG.info("Copied %s --> %s", source_abs_path, destination_abs_path)
+
+
+def run_setup_py(setup_py_path, build_dir, repo_root):
+    stderr = stdout = open("/dev/null", "wb")
+
+    if LOG.isEnabledFor(logging.INFO):
+        stderr = None
+        stdout = None
+
+    subprocess.check_call(["python", setup_py_path,
+                           "build", "--build-lib=%s" % build_dir],
+                          cwd=repo_root,
+                          stderr=stderr,
+                          stdout=stdout)
+
 
 
 def build_project(definition):
-    setup_py_path = write_setup_py(definition)
-
     build_dir = os.path.join(definition.repository_root, "build")
-    subprocess.check_call(["python", setup_py_path,
-                           "build", "--build-lib=%s" % build_dir],
-                          cwd=definition.repository_root)
 
+    setup_py_path = write_setup_py(definition)
+    run_setup_py(setup_py_path, build_dir, definition.repository_root)
     zip_basename = zip_build_dir(definition)
 
     for binary in definition.binaries:

@@ -33,6 +33,7 @@ class BinaryDefinition(object):
 
 
 class PypackDefinition(object):
+
     def __init__(self):
         self.repository_root = None
         self.project_absolute_path = None
@@ -44,9 +45,9 @@ class PypackDefinition(object):
 
 
     @classmethod
-    def from_project_directory(cls, project_dir):
+    def from_project_directory(cls, project_dir, repo_root):
         definition = cls()
-        definition.init_definition_fs_paths(project_dir)
+        definition.init_definition_fs_paths(project_dir, repo_root)
         pypack_file_path = os.path.join(definition.project_absolute_path,
                                         "PYPACK")
         if _DEFINITION_CACHE.get(pypack_file_path, None):
@@ -73,12 +74,9 @@ class PypackDefinition(object):
             if f:
                 f.close()
 
-    def init_definition_fs_paths(self, project_directory):
+    def init_definition_fs_paths(self, project_directory, repo_root):
         self.project_absolute_path = os.path.abspath(project_directory)
-
-        self.repository_root = self._determine_repo_root(
-            self.project_absolute_path)
-
+        self.repository_root = repo_root
         self.project_repo_rel_path = os.path.relpath(self.project_absolute_path,
                                                      self.repository_root)
 
@@ -86,15 +84,6 @@ class PypackDefinition(object):
         # it were an import
         self.module_py_path = self.project_repo_rel_path.replace(
             os.path.sep, ".")
-
-
-    def _determine_repo_root(self, project_directory):
-        # Only supports git right now
-        # TODO: don't call this when computing dependencies
-        git_dir = subprocess.check_output(["git", "rev-parse",
-                                           "--show-toplevel"],
-                                          cwd=project_directory)
-        return git_dir.strip()
 
 
     @cached_property
@@ -173,7 +162,8 @@ class PypackDefinition(object):
             abs_path = os.path.join(self.project_absolute_path, file_name)
             if not os.path.isdir(abs_path):
                 continue
-            definition = PypackDefinition.from_project_directory(abs_path)
+            definition = PypackDefinition.from_project_directory(
+                abs_path, self.repository_root)
             dependency_defs.append(definition)
 
 
@@ -186,7 +176,8 @@ class PypackDefinition(object):
             abs_path = os.path.join(self.repository_root,
                                     depend_rel_path)
 
-            definition = PypackDefinition.from_project_directory(abs_path)
+            definition = PypackDefinition.from_project_directory(abs_path,
+                                                                 self.repository_root)
             dependency_defs.append(definition)
 
 
