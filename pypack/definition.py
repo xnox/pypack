@@ -15,10 +15,6 @@ class BinaryDefinition(object):
         self.binary_name = binary_name
         self.invocation_file = invocation_file
 
-    @cached_property
-    def output_path(self):
-        return os.path.join(self.pypack_definition.repository_root,
-                            self.binary_name)
 
     @cached_property
     def entry_module_path(self):

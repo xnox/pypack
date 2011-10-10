@@ -19,6 +19,9 @@ def parse_args():
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="Say a lot about what's going on",
                         default=False)
+    parser.add_argument("-o", "--output",
+                        default="$REPO_ROOT/projectname_PYPACK",
+                        help="The directory to output build files")
     args = parser.parse_args()
     return args
 
@@ -29,6 +32,13 @@ def get_repo_root(args):
                                            "--show-toplevel"])
         return git_dir.strip()
     return os.path.abspath(args.repo_root)
+
+
+def get_output_directory(args, repo_root, definition):
+    if args.output == "$REPO_ROOT/projectname_PYPACK":
+        basename = "%s_PYPACK" % (definition.project_name)
+        return os.path.join(repo_root, basename)
+    return os.path.abspath(args.output)
 
 
 def configure_logging(args):
@@ -46,7 +56,9 @@ def main():
     definition = PypackDefinition.from_project_directory(
         args.project, repo_root)
 
-    build_project(definition)
+    output_directory = get_output_directory(args, repo_root, definition)
+
+    build_project(definition, output_directory)
 
 if __name__ == "__main__":
     main()

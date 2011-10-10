@@ -52,32 +52,33 @@ def write_setup_py(definition):
     return setup_py_path
 
 
-def write_wrapped_binary(zip_basename, binary):
-    wrapped_binary = render_wrapped_binary(zip_basename,
+def write_wrapped_binary(zip_path, binary, build_dir):
+    wrapped_binary = render_wrapped_binary(os.path.basename(zip_path),
                                            binary.entry_module_path)
-    f = open(binary.output_path, "wb")
+    output_path = os.path.join(build_dir, binary.binary_name)
+    f = open(output_path, "wb")
     f.write(wrapped_binary)
     f.close()
-    os.chmod(binary.output_path, 0755)
+    os.chmod(output_path, 0755)
     LOG.info("Wrote binary '%s' to %s",
-             binary.binary_name, binary.output_path)
+             binary.binary_name, output_path)
 
 
 
-def zip_build_dir(definition):
-    build_dir = os.path.join(definition.repository_root, "build")
-    shutil.make_archive(base_name=definition.project_name,
+def zip_build_dir(definition, build_dir, output_dir):
+    base_name = os.path.join(output_dir, definition.project_name)
+    shutil.make_archive(base_name=base_name,
                         format="zip",
                         root_dir=build_dir)
 
-    return "%s.zip" % definition.project_name
+    return "%s.zip" % base_name
 
 
-def make_external_data_dir(definition):
+def make_external_data_dir(definition, build_dir):
     data_rel_paths = definition.all_dependencies["external_data_paths"]
     if not data_rel_paths:
         return
-    data_dir = os.path.join(definition.repository_root,
+    data_dir = os.path.join(build_dir,
                             "%s_data" % definition.project_name)
     if os.path.exists(data_dir):
         LOG.info("External data dir %s exists, removing", data_dir)
@@ -95,8 +96,7 @@ def copy_data_entries(definition, data_dir):
     outside of the zipped package of dependencies.
     """
     for repo_rel_path in definition.all_dependencies["external_data_paths"]:
-        destination_abs_path = os.path.join(definition.repository_root,
-                                            data_dir,
+        destination_abs_path = os.path.join(data_dir,
                                             repo_rel_path)
         source_abs_path = os.path.join(definition.repository_root,
                                        repo_rel_path)
@@ -124,17 +124,20 @@ def run_setup_py(setup_py_path, build_dir, repo_root):
 
 
 
-def build_project(definition):
-    build_dir = os.path.join(definition.repository_root, "build")
+def build_project(definition, output_directory):
+    if not os.path.exists(output_directory):
+        os.makedirs(output_directory)
+
+    build_dir = os.path.join(output_directory, "build")
 
     setup_py_path = write_setup_py(definition)
     run_setup_py(setup_py_path, build_dir, definition.repository_root)
-    zip_basename = zip_build_dir(definition)
+    zip_path = zip_build_dir(definition, build_dir, output_directory)
 
     for binary in definition.binaries:
-        write_wrapped_binary(zip_basename, binary)
+        write_wrapped_binary(zip_path, binary, output_directory)
 
-    data_dir = make_external_data_dir(definition)
+    data_dir = make_external_data_dir(definition, output_directory)
     copy_data_entries(definition, data_dir)
 
 
