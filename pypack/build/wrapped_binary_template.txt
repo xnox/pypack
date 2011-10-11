@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# These are all variables available to your binary.
+
+export EXEC_DIR="$(cd "$(dirname $0)" && pwd)"
+export PYPACK_ZIP=$EXEC_DIR/%(zip_file)s
+export PYTHONPATH=$PYPACK_ZIP:$PYPACK_ZIP/third_party:$EXEC_DIR/third_party_cext
+export EXTERNAL_DATA_DIR=$EXEC_DIR/%(data_dir)s
+export BUILD_PROJECT="%(project_name)s"
+export PROJECT_REPO_REL_PATH="%(project_repo_rel_path)s"
+export BINARY_PY_MODULE="%(binary_py_module)s"
+
+%(invocation)s

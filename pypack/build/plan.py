@@ -20,8 +20,9 @@ class BuildPlan(object):
         self.build_directory = os.path.join(output_directory, "build")
         self.thirdparty_cext_directory = os.path.join(output_directory,
                                                       "third_party_cext")
-        data_dir_rel = "%s_data" % self.target_definition.project_name
-        self.external_data_dir = os.path.join(output_directory, data_dir_rel)
+        self.data_dir_rel = "%s_data" % self.target_definition.project_name
+        self.external_data_dir = os.path.join(output_directory,
+                                              self.data_dir_rel)
 
     def _repo_rel_path(self, file_abs_path):
         return os.path.relpath(file_abs_path,
@@ -65,3 +66,37 @@ class BuildPlan(object):
     def get_external_data_file_dest(self, file_abs_path):
         repo_rel_path = self._repo_rel_path(file_abs_path)
         dest_abs_path = os.path.join(self.external_data_dir, repo_rel_path)
+        return dest_abs_path
+
+
+    def get_zip_base_name_shutil(self):
+        """
+        This is dump, shutil's make_archive function wants a basename
+        with no file extension.
+        """
+        return os.path.join(self.output_directory,
+                            self.target_definition.project_name)
+
+    def get_zip_base_name(self):
+        """
+        Used for setting PYTHONPATH in the wrapped binaries.
+        """
+        return "%s.zip" % self.target_definition.project_name
+
+
+    def get_binary_output_path(self, binary):
+        """
+        Py binaries get wrapped in a shell script that do module-named
+        execution, and non-py binaries get copied out to a .directory
+        and wrapped.
+        """
+        return os.path.join(self.output_directory, binary.binary_name)
+
+
+    def get_non_py_binary_destination(self, binary):
+        return os.path.join(self.get_wrapped_binary_dir(),
+                            binary.binary_name)
+
+
+    def get_wrapped_binary_dir(self):
+        return os.path.join(self.output_directory, ".wrapped-binaries")

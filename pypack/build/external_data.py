@@ -1,15 +1,14 @@
 import os
 import shutil
+import logging
+
+LOG = logging.getLogger(__name__)
 
 
-def make_external_data_dir(build_plan):
-    external_data_abs_paths = []
-
+def copy_external_data(build_plan):
     dependency_defs = build_plan.target_definition.dependency_list
     for dependency_def in dependency_defs:
         _copy_data_entries(dependency_def, build_plan)
-
-
 
 
 def _copy_data_entries(definition, build_plan):
@@ -18,9 +17,12 @@ def _copy_data_entries(definition, build_plan):
     "external data" gets written to a projectname_data directory,
     outside of the zipped package of dependencies.
     """
-    external_paths = definition.externa_data_paths
+    external_paths = definition.external_data_paths
+    if external_paths:
+        LOG.info("Copying external data for %s", definition.module_py_path)
 
     for external_path in external_paths:
+        LOG.info("Processing external data dependency %s", external_path)
         # These are yet un-expanded
         for dir_path, directories, files in os.walk(external_path):
             for file_name in files:
@@ -31,4 +33,4 @@ def _copy_data_entries(definition, build_plan):
                 if not os.path.exists(dst_dir):
                     os.makedirs(dst_dir)
                 shutil.copy2(src_path, dst_path)
-
+                LOG.debug("Copied external data %s --> %s", src_path, dst_path)

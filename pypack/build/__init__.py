@@ -4,76 +4,42 @@ to programmatic access. It really likes to be called from
 the shell.
 """
 import os
-import subprocess
 import shutil
 import logging
-from StringIO import StringIO
+from pypack.build.plan import BuildPlan
+from pypack.build.dependencies import copy_dependencies
+from pypack.build.external_data import copy_external_data
+from pypack.build.compression import zip_build
+from pypack.build.binaries import write_binaries
 
 LOG = logging.getLogger(__name__)
 
 
-def render_wrapped_binary(zip_file_basename, binary):
-    this_dir = os.path.dirname(__file__)
-    f = open(os.path.join(this_dir, "wrapped_binary_template.txt"), "rb")
-    template = f.read()
-    f.close()
-
-    entry_module = binary.entry_module_path
-    pythonpath_additions = " ".join(binary.relative_pythonpath_additions)
-
-
-    return template % {"pythonpath_additions": pythonpath_additions,
-                       "zip_file_basename": zip_file_basename,
-                       "entry_module": entry_module}
+def init_dirs(build_plan):
+    if not os.path.exists(build_plan.output_directory):
+        LOG.debug("Making output directory %s", build_plan.output_directory)
+        os.makedirs(build_plan.output_directory)
+    if not os.path.exists(build_plan.get_wrapped_binary_dir()):
+        LOG.debug("Making wrapped binary dir %s",
+                  build_plan.get_wrapped_binary_dir())
+        os.makedirs(build_plan.get_wrapped_binary_dir())
 
 
-
-def write_wrapped_binary(zip_path, binary, build_dir):
-    wrapped_binary = render_wrapped_binary(os.path.basename(zip_path),
-                                           binary.entry_module_path)
-    output_path = os.path.join(build_dir, binary.binary_name)
-    f = open(output_path, "wb")
-    f.write(wrapped_binary)
-    f.close()
-    os.chmod(output_path, 0755)
-    LOG.info("Wrote binary '%s' to %s",
-             binary.binary_name, output_path)
-
-
-
-def zip_build_dir(definition, build_dir, output_dir):
-    base_name = os.path.join(output_dir, definition.project_name)
-    shutil.make_archive(base_name=base_name,
-                        format="zip",
-                        root_dir=build_dir)
-
-    return "%s.zip" % base_name
-
-
-
-
-
+def cleanup(build_plan):
+    LOG.info("Cleaning up")
+    if os.path.exists(build_plan.build_directory):
+        LOG.debug("Deleting %s", build_plan.build_directory)
+        shutil.rmtree(build_plan.build_directory)
 
 
 def build_project(definition, output_directory):
-    if not os.path.exists(output_directory):
-        os.makedirs(output_directory)
+    build_plan = BuildPlan(definition, output_directory)
 
-    build_dir = os.path.join(output_directory, "build")
+    init_dirs(build_plan)
 
-    setup_py_path = write_setup_py(definition)
-    run_setup_py(setup_py_path, build_dir, definition.repository_root)
-    move_third_party_c_extensions(build_dir, output_directory)
-    zip_path = zip_build_dir(definition, build_dir, output_directory)
+    copy_dependencies(build_plan)
+    copy_external_data(build_plan)
+    zip_build(build_plan)
+    write_binaries(build_plan)
 
-    for binary in definition.binaries:
-        write_wrapped_binary(zip_path, binary, output_directory)
-
-    data_dir = make_external_data_dir(definition, output_directory)
-    copy_data_entries(definition, data_dir)
-
-
-    # Cleanup
-    shutil.rmtree(build_dir)
-    os.remove(setup_py_path)
-
+    cleanup(build_plan)

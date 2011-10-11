@@ -1,6 +1,5 @@
 import os
 import ConfigParser
-import subprocess
 
 from util import cached_property
 
@@ -14,23 +13,23 @@ class BinaryDefinition(object):
         self.pypack_definition = pypack_definition
         self.binary_name = binary_name
         self.invocation_file = invocation_file
-
+        self.abs_path = os.path.join(pypack_definition.project_absolute_path,
+                                     self.invocation_file)
 
     @cached_property
     def entry_module_path(self):
         # TODO: check to see if the invocation file is there
-        local_module_name = self.invocation_file
-        if self.invocation_file.endswith(".py"):
-            local_module_name = local_module_name[:-3]
+        if not self.is_py_binary():
+            return ""
 
+        local_module_name = self.invocation_file
         qualified_module_path = "%s.%s" % (
             self.pypack_definition.module_py_path, local_module_name)
         return qualified_module_path
 
 
-    @cached_property
-    def relative_pythonpath_additions(self):
-        return self.pypack_definition.all_dependencies["pythonpath_additions"]
+    def is_py_binary(self):
+        return self.invocation_file.endswith(".py")
 
 
 class PypackDefinition(object):
@@ -147,11 +146,11 @@ class PypackDefinition(object):
         dependencies.
         """
 
-        tree = self._compute_dependency_list()
+        tree = self.compute_dependency_list()
         return tree
 
 
-    def _compute_dependency_list(self, processed_defs=set([])):
+    def compute_dependency_list(self, processed_defs=set([])):
         """
         Return the transitive closure of dependency PypackDefinition
         objects.
@@ -159,14 +158,14 @@ class PypackDefinition(object):
         if self._dependent_definitions is not None:
             return self._dependent_definitions
 
-        dependent_defs = set([])
+        dependent_defs = set([self])
         for dependency_def in self.direct_dependency_definitions:
             if dependency_def in processed_defs:
                 continue
             processed_defs.add(dependency_def)
             dependent_defs.add(dependency_def)
             dependent_defs.update(
-                dependency_def.all_dependent_definitions(processed_defs))
+                dependency_def.compute_dependency_list(processed_defs))
 
         self._dependent_definitions = dependent_defs
         return self._dependent_definitions
@@ -190,44 +189,3 @@ class PypackDefinition(object):
             binaries.append(b)
 
         return binaries
-
-
-    @cached_property
-    def pythonpath_additions(self):
-        """
-        Typically, your repository would be laid out like this:
-        my_repo/
-          src/
-          third_party/
-
-        With code in src/ importing third_party libs like this:
-
-        from sqlalchemy import Integer
-
-        However, in the context of the build, the fully qualified
-        import path would be:
-
-        from third_party.sqlalchemy import Integer
-
-        Which works fine for *your* code, but when the library imports
-        from itself, shit gets ill fast, as it is not importing the fully
-        qualified path, so you get ImportErrors when you import a library.
-
-        However, if PYTHONPATH=my_repo/src:my_repo/third_party, it will
-        work fine, provided your third party libs are installed in third_party.
-
-        So, we will automatically add third_party/ to the PYTHONPATH of
-        the output binary, so your imports would work just as they would if
-        you were importing a package installed via pip.
-
-        The downside to this is that your development version may be importing
-        the pip version of the package, not the third_party/ version, so
-        you should make sure you've got that straight.
-        """
-
-        # TODO: add a config parameter so you can set arbitrary
-        # PYTHONPATH additions.
-        if self.module_py_path == "third_party":
-            return ["third_party"]
-
-        return []
