@@ -22,7 +22,7 @@ class BinaryDefinition(object):
         if not self.is_py_binary():
             return ""
 
-        local_module_name = self.invocation_file
+        local_module_name = self.invocation_file[:-3]
         qualified_module_path = "%s.%s" % (
             self.pypack_definition.module_py_path, local_module_name)
         return qualified_module_path
