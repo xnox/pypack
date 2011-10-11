@@ -28,6 +28,11 @@ class BinaryDefinition(object):
         return qualified_module_path
 
 
+    @cached_property
+    def relative_pythonpath_additions(self):
+        return self.pypack_definition.all_dependencies["pythonpath_additions"]
+
+
 class PypackDefinition(object):
 
     def __init__(self):
@@ -87,61 +92,16 @@ class PypackDefinition(object):
         """
         Return the paths to the files and directories in the
         [external_data] section of the PYPACK file.
-        Paths are returned relative to the repo root.
+        Paths returned are absolute.
         """
-        return self._data_paths("external_data")
-
-
-    @cached_property
-    def internal_data_paths(self):
-        """
-        Return the paths to the files and directories in the
-        [internal_data] section of the PYPACK file.
-        Paths are returned relative to the repo root
-        """
-        return self._data_paths("internal_data",
-                                relative_to=self.project_absolute_path)
-
-
-    def _data_paths(self, config_section, relative_to=None):
-        """
-        Read and expand the data paths. For example, if someone
-        specifies:
-
-        templates/
-
-        this method will recursively expand that to all files
-        in the subtree.
-
-        When you want to support glob syntax, do it here.
-        """
-        if not self._config or not self._config.has_section(config_section):
+        if not self._config or not self._config.has_section("external_data"):
             return []
 
-        if relative_to is None:
-            relative_to = self.repository_root
-
-        def visit(append_to, dirname, file_names):
-            for file_name in file_names:
-                path = os.path.join(dirname, file_name)
-                if os.path.isfile(path):
-                    append_to.append(path)
+        project_rel_paths = [k for k, _ in self._config.items("external_data")]
+        return [os.path.join(self.project_absolute_path, p)
+                for p in project_rel_paths]
 
 
-        # Given the defined paths (relative to the project root),
-        # expand the entries to absolute paths
-        all_abs_paths = []
-        project_rel_paths = [k for k, _ in self._config.items(config_section)]
-        for rel_path in project_rel_paths:
-            abs_path = os.path.join(self.project_absolute_path, rel_path)
-            if not os.path.isdir(abs_path):
-                all_abs_paths.append(abs_path)
-            else:
-                # Recurse directories
-                os.path.walk(abs_path, visit, all_abs_paths)
-
-        # Return the paths relative to the method arg
-        return [os.path.relpath(a, relative_to) for a in all_abs_paths]
 
     @cached_property
     def direct_dependency_definitions(self):
@@ -181,46 +141,17 @@ class PypackDefinition(object):
 
 
     @cached_property
-    def module_tree_parents(self):
-        """If the module is at A.B.C.D, this returns A, A.B, A.B.C, A.B.C.D"""
-        tree_parents = []
-
-        module_parent_list = self.project_repo_rel_path.split(os.path.sep)
-        for i in xrange(1, len(module_parent_list) + 1):
-            path_segment = ".".join(module_parent_list[:i])
-            tree_parents.append(path_segment)
-
-        return tree_parents
-
-
-
-    @cached_property
-    def all_dependencies(self):
+    def dependency_list(self):
         """
-        Return the following dependencies, as a dictionary:
-          - Modules
-          - External data
-          - Internal (package) data
+        Return a flat list of PypackDefinition objects for this one's
+        dependencies.
         """
 
-        dependencies = {"modules": set(self.module_tree_parents),
-                        "external_data_paths": set(self.external_data_paths),
-                        "internal_data_paths":
-                            {self.module_py_path: self.internal_data_paths}}
-        dependent_defs = self.all_dependent_definitions()
-        for def_ in dependent_defs:
-            dependencies["modules"].update(def_.module_tree_parents)
-            dependencies["external_data_paths"].update(def_.external_data_paths)
-            if def_.internal_data_paths:
-                # distutils requires a map of module -> relative path
-                # That's relative patch from the *package*, not the root
-                dependencies["internal_data_paths"][def_.module_py_path] = \
-                    def_.internal_data_paths
-
-        return dependencies
+        tree = self._compute_dependency_list()
+        return tree
 
 
-    def all_dependent_definitions(self, processed_defs=set([])):
+    def _compute_dependency_list(self, processed_defs=set([])):
         """
         Return the transitive closure of dependency PypackDefinition
         objects.
@@ -243,9 +174,10 @@ class PypackDefinition(object):
 
     @cached_property
     def project_name(self):
-        if not self._config:
-            return None
-        return self._config.get("project", "name")
+        noslash_path = self.project_absolute_path
+        if noslash_path.endswith("/"):
+            noslash_path = noslash_path[:-1]
+        return os.path.basename(noslash_path)
 
 
     @cached_property
@@ -258,3 +190,44 @@ class PypackDefinition(object):
             binaries.append(b)
 
         return binaries
+
+
+    @cached_property
+    def pythonpath_additions(self):
+        """
+        Typically, your repository would be laid out like this:
+        my_repo/
+          src/
+          third_party/
+
+        With code in src/ importing third_party libs like this:
+
+        from sqlalchemy import Integer
+
+        However, in the context of the build, the fully qualified
+        import path would be:
+
+        from third_party.sqlalchemy import Integer
+
+        Which works fine for *your* code, but when the library imports
+        from itself, shit gets ill fast, as it is not importing the fully
+        qualified path, so you get ImportErrors when you import a library.
+
+        However, if PYTHONPATH=my_repo/src:my_repo/third_party, it will
+        work fine, provided your third party libs are installed in third_party.
+
+        So, we will automatically add third_party/ to the PYTHONPATH of
+        the output binary, so your imports would work just as they would if
+        you were importing a package installed via pip.
+
+        The downside to this is that your development version may be importing
+        the pip version of the package, not the third_party/ version, so
+        you should make sure you've got that straight.
+        """
+
+        # TODO: add a config parameter so you can set arbitrary
+        # PYTHONPATH additions.
+        if self.module_py_path == "third_party":
+            return ["third_party"]
+
+        return []

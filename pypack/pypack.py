@@ -57,7 +57,6 @@ def main():
         args.project, repo_root)
 
     output_directory = get_output_directory(args, repo_root, definition)
-
     build_project(definition, output_directory)
 
 if __name__ == "__main__":
