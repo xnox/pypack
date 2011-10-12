@@ -23,14 +23,20 @@ def _copy_data_entries(definition, build_plan):
 
     for external_path in external_paths:
         LOG.info("Processing external data dependency %s", external_path)
+        if os.path.isfile(external_path):
+            _copy_external(external_path, build_plan)
+            continue
         # These are yet un-expanded
         for dir_path, directories, files in os.walk(external_path):
             for file_name in files:
                 src_path = os.path.join(dir_path, file_name)
-                dst_path = build_plan.get_external_data_file_dest(src_path)
+                _copy_external(src_path, build_plan)
 
-                dst_dir = os.path.dirname(dst_path)
-                if not os.path.exists(dst_dir):
-                    os.makedirs(dst_dir)
-                shutil.copy2(src_path, dst_path)
-                LOG.debug("Copied external data %s --> %s", src_path, dst_path)
+def _copy_external(source, build_plan):
+    dst_path = build_plan.get_external_data_file_dest(source)
+
+    dst_dir = os.path.dirname(dst_path)
+    if not os.path.exists(dst_dir):
+        os.makedirs(dst_dir)
+    shutil.copy2(source, dst_path)
+    LOG.debug("Copied external data %s --> %s", source, dst_path)
