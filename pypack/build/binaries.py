@@ -7,7 +7,11 @@ LOG = logging.getLogger(__name__)
 
 
 def write_binaries(build_plan):
-    for binary in build_plan.target_definition.binaries:
+    binaries_to_build = build_plan.target_definition.binaries
+    for def_ in build_plan.target_definition.dependency_list:
+        binaries_to_build.extend(def_.binary_depends)
+
+    for binary in binaries_to_build:
         if not binary.is_py_binary():
             copy_non_py_binary(build_plan, binary)
 

@@ -189,3 +189,27 @@ class PypackDefinition(object):
             binaries.append(b)
 
         return binaries
+
+
+    @cached_property
+    def binary_depends(self):
+        if not self._config or not self._config.has_section("binary_depends"):
+            return []
+
+        dependent_binary_objs = []
+        for bin_depends_entry, _ in self._config.items("binary_depends"):
+            # TODO: syntax check here
+            last_slash = bin_depends_entry.rindex("/")
+            package = bin_depends_entry[:last_slash].strip()
+            binary_name = bin_depends_entry[last_slash+1:].strip()
+
+            definition = PypackDefinition.from_project_directory(
+                package, self.repository_root)
+
+            # TODO: O(1)-ify this, probably a premature opt.
+            # This comment is me giving a fuck.
+            for b in definition.binaries:
+                if b.binary_name == binary_name:
+                    dependent_binary_objs.append(b)
+
+        return dependent_binary_objs
